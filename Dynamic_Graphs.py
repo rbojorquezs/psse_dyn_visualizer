@@ -15,8 +15,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from collections import OrderedDict
 from tkinter import font as tkFont
+import os
+import re
 
-# Initialize PSSE V_36
+# Inicializar PSSE V_36
 pssepy_PATH = r"C:\Program Files\PTI\PSSE36\36.1\PSSPY311"
 sys.path.append(pssepy_PATH)
 import psse36  # type: ignore
@@ -112,6 +114,16 @@ class DynamicGraphApp:
         # Plot customization section
         custom_frame = ttk.LabelFrame(right_frame, text="Plot Customization", padding="10")
         custom_frame.pack(fill=tk.BOTH, pady=5, expand=True)
+
+        # Save as image checkbox
+        self.save_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(custom_frame, text="Guardar como imagen PNG", variable=self.save_var).grid(row=8, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+        # Filename entry
+        ttk.Label(custom_frame, text="Nombre del archivo (opcional):").grid(row=9, column=0, padx=5, pady=2, sticky=tk.W)
+        self.filename_entry = ttk.Entry(custom_frame)
+        self.filename_entry.grid(row=9, column=1, padx=5, pady=2, sticky=tk.EW)
+
         
         # Plot title
         ttk.Label(custom_frame, text="Title:").grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
@@ -188,6 +200,7 @@ class DynamicGraphApp:
         if outfile:
             try:
                 self.chnfobj = dyntools.CHNF(outfile)
+                self.outfile_path = outfile
                 short_title, chanid_dict, self.chandata = self.chnfobj.get_data()
                 
                 # Store channel information (excluding time since we handle it separately)
@@ -339,6 +352,10 @@ class DynamicGraphApp:
             
             # Redraw canvas
             self.canvas.draw()
+
+            if self.save_var.get():
+                self.save_figure_as_png()
+
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate plot:\n{str(e)}")
@@ -392,6 +409,31 @@ class DynamicGraphApp:
                     self.ax.get_xticklabels() + self.ax.get_yticklabels()):
             item.set_fontfamily(self.plot_settings['font_family'])
             item.set_fontsize(self.plot_settings['font_size'])
+
+    def save_figure_as_png(self):
+        if not hasattr(self, 'outfile_path') or not self.outfile_path:
+            return
+
+        try:
+            # Carpeta del archivo .out
+            out_dir = os.path.dirname(self.outfile_path)
+
+            # Nombre del archivo desde entrada o título
+            filename = self.filename_entry.get().strip()
+            if not filename:
+                filename = self.title_entry.get().strip() or "dynamic_simulation"
+
+            # Sanitizar nombre
+            safe_title = re.sub(r'[\\/*?:"<>|]', "_", filename).replace(" ", "_")
+            save_path = os.path.join(out_dir, f"{safe_title}.png")
+
+            # Guardar
+            self.fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+            messagebox.showinfo("Imagen guardada", f"Gráfica guardada en:\n{save_path}")
+        except Exception as e:
+            messagebox.showwarning("Error al guardar imagen", str(e))
+
+
 
 if __name__ == "__main__":
     root = tk.Tk()
