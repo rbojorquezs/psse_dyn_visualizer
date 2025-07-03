@@ -19,9 +19,17 @@ import os
 import re
 
 # Inicializar PSSE V_36
-pssepy_PATH = r"C:\Program Files\PTI\PSSE36\36.1\PSSPY311"
+#pssepy_PATH = r"C:\Program Files\PTI\PSSE36\36.1\PSSPY311"
+#sys.path.append(pssepy_PATH)
+#import psse36  # type: ignore
+#import psspy  # type: ignore
+#psspy.psseinit()
+#import dyntools # type: ignore
+
+# Inicializar PSSE V_35
+pssepy_PATH = r'C:\Program Files\PTI\PSSE35\35.5\PSSPY39'
 sys.path.append(pssepy_PATH)
-import psse36  # type: ignore
+import psse35  # type: ignore
 import psspy  # type: ignore
 psspy.psseinit()
 import dyntools # type: ignore
@@ -54,14 +62,14 @@ class DynamicGraphApp:
         self.plot_settings = {
             'title': "  ",
             'xlabel': "",
-            'ylabel': "Value",
+            'ylabel': " ",
             'xlim_min': "",
             'xlim_max': "",
             'ylim_min': "",
             'ylim_max': "",
             'font_family': "Arial",
             'font_size': 10,
-            'grid': True
+            'grid': False
             
         }
 
@@ -230,9 +238,29 @@ class DynamicGraphApp:
         self.save_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(options_frame, text="Guardar como imagen PNG", variable=self.save_var).pack(anchor=tk.W)
 
+        # Tamaño personalizado de la figura (en pulgadas)
+        ttk.Label(options_frame, text="Tamaño de la figura (pulgadas):").pack(anchor=tk.W)
+        size_frame = ttk.Frame(options_frame)
+        size_frame.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(size_frame, text="Ancho:").pack(side=tk.LEFT)
+        self.fig_width_entry = ttk.Entry(size_frame, width=6)
+        self.fig_width_entry.insert(0, "10")
+        self.fig_width_entry.pack(side=tk.LEFT, padx=(2, 8))
+        ttk.Label(size_frame, text="Alto:").pack(side=tk.LEFT)
+        self.fig_height_entry = ttk.Entry(size_frame, width=6)
+        self.fig_height_entry.insert(0, "5")
+        self.fig_height_entry.pack(side=tk.LEFT, padx=(2, 0))
+
+
         ttk.Label(options_frame, text="Nombre del archivo (opcional):").pack(anchor=tk.W)
         self.filename_entry = ttk.Entry(options_frame)
         self.filename_entry.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(options_frame, text="Resolución (DPI):").pack(anchor=tk.W)
+        self.dpi_entry = ttk.Entry(options_frame, width=8)
+        self.dpi_entry.insert(0, "300")  # valor por defecto
+        self.dpi_entry.pack(anchor=tk.W, pady=(0, 5))
+
 
         self.dual_y_var = tk.BooleanVar(value=False)
         self.dual_y_check = ttk.Checkbutton(options_frame, text="Usar segundo eje Y (derecho)", variable=self.dual_y_var)
@@ -283,39 +311,30 @@ class DynamicGraphApp:
                 messagebox.showerror("Error", f"Failed to load file:\n{str(e)}")
     
     def update_comboboxes(self):
-        # Create list of available variables (just 'time' and our channels)
+        # Crear lista de variables disponibles (incluyendo "time")
         variables = ["time"] + list(self.chanid.values())
         
-        # Update X-axis combobox
+        # Actualizar combobox del eje X
         self.combo_x['values'] = variables
         if variables:
-            self.combo_x.current(0)  # Select 'time' by default
-        
-        # Update all Y-axis comboboxes
+            self.combo_x.current(0)  # Selecciona "time" por defecto
+
+        # Actualizar todos los combobox del eje Y
         for combo in self.y_combos:
             combo['values'] = variables
             if variables:
-                # Select first channel (skip 'time' for Y unless it's the only option)
                 if len(variables) > 1:
                     combo.current(1)
                 else:
                     combo.current(0)
-        
-                # Mostrar opción de doble eje Y si hay 2+ variables disponibles
+
+        # Mostrar u ocultar opción de doble eje Y dependiendo del número de variables
         if len(self.chanid) >= 2:
-            self.dual_y_check.pack()
+            self.dual_y_check.pack(anchor=tk.W)
         else:
             self.dual_y_var.set(False)
             self.dual_y_check.pack_forget()
 
-
-        
-        # Mostrar opción de doble eje Y si hay 2+ variables disponibles
-        if len(self.chanid) >= 2:
-            self.dual_y_check.grid()
-        else:
-            self.dual_y_var.set(False)
-            self.dual_y_check.grid_remove()
     
     def add_y_variable(self):
         # Crear nuevo frame para el conjunto de opciones de una variable Y
@@ -381,11 +400,20 @@ class DynamicGraphApp:
             self.ax.clear()
             ax2 = None  # segundo eje
 
+            # Obtener tamaño personalizado de la figura
+            try:
+                width = float(self.fig_width_entry.get())
+                height = float(self.fig_height_entry.get())
+                self.fig.set_size_inches(width, height)
+            except ValueError:
+                pass  # Si el usuario mete algo no numérico, se ignora
+
+
 
             # Obtener datos de X
             if x_selection == "time":
                 x_data = self.chandata['time']
-                x_label = "Time (seconds)"
+                x_label = "Tiempo (s)"
             else:
                 x_chan = int(x_selection.split(':')[0])
                 x_data = self.chandata.get(x_chan)
@@ -503,6 +531,17 @@ class DynamicGraphApp:
                 self.ax.figure.tight_layout()
                 ax2.legend(loc=legend_loc, fontsize=10, frameon=frameon, bbox_to_anchor=bbox_anchor)
 
+            self.apply_plot_settings(x_label, ax2)
+
+            # Guardar imagen si está activado
+            if self.save_var.get():
+                self.save_figure_as_png()
+
+            self.fig.tight_layout()
+            self.canvas.draw()
+
+
+
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate plot:\n{str(e)}")
@@ -587,13 +626,22 @@ class DynamicGraphApp:
             if not filename:
                 filename = self.title_entry.get().strip() or "dynamic_simulation"
 
+                
+
             # Sanitizar nombre
             safe_title = re.sub(r'[\\/*?:"<>|]', "_", filename).replace(" ", "_")
             save_path = os.path.join(out_dir, f"{safe_title}.png")
 
             # Guardar
-            self.fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
-            messagebox.showinfo("Imagen guardada", f"Gráfica guardada en:\n{save_path}")
+            # Leer DPI desde la interfaz
+            try:
+                dpi_value = int(self.dpi_entry.get())
+            except ValueError:
+                dpi_value = 300  # valor por defecto
+
+            self.fig.savefig(save_path, dpi=dpi_value, bbox_inches='tight', transparent=True)
+
+
         except Exception as e:
             messagebox.showwarning("Error al guardar imagen", str(e))
 
